@@ -1,0 +1,24 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>EduPrep Online – Sign in</title>
+<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@500;600;700;800&display=swap" rel="stylesheet"><link rel="stylesheet" href="style.css"></head><body>
+<div class="auth"><section class="hero"><div class="logo" style="margin-bottom:40px">Edu<b>Prep</b> Online</div>
+<h1>Crack JEE, NEET &amp; UPSC with <span>one place</span></h1><p>Exam-wise courses, recorded lectures, downloadable notes and test series with automatic ranking.</p>
+<ul><li>Courses organised by exam category</li><li>Download papers and notes anytime</li><li>Track your score and rank on every test</li></ul></section>
+<section class="box"><h2 id="ttl">Welcome back</h2>
+<div class="tabs"><button id="ts" class="on" type="button">Student</button><button id="tf" type="button">Faculty</button></div>
+<form id="f" autocomplete="on"><div id="fields"></div><div class="err" id="err" role="alert"></div><button class="btn" style="width:100%;margin-top:8px" id="go">Log in</button></form>
+<p class="sw" id="sw"></p></section></div><div id="toast"></div>
+<script src="app.js"></script><script>
+let role='student',reg=false;const cats=DB.get('exam_category');
+const L=(l,n,t='text',x='')=>`<label for="${n}">${l}</label><input id="${n}" name="${n}" type="${t}" ${x}>`;
+function draw(){$('#ttl').textContent=reg?'Create your account':'Welcome back';$('#go').textContent=reg?'Register':'Log in';
+ $('#ts').className=role==='student'?'on':'';$('#tf').className=role==='faculty'?'on':'';$('#err').textContent='';
+ let h='';if(reg)h+=L('Full name','name','text','required maxlength=100');
+ h+=L('Email','email','email','required maxlength=100')+L('Password','password','password','required minlength=6');
+ if(reg&&role==='student')h+=`<div class="f2"><div>${L('Phone','phone','tel','maxlength=15')}</div><div>${L('City','city','text','maxlength=50')}</div></div><label for="exam">Exam you are preparing for</label><select id="exam" required><option value="">Select exam</option>${cats.map(c=>`<option value="${c.category_id}">${esc(c.category_name)}</option>`)}</select>`;
+ if(reg&&role==='faculty')h+=`<div class="f2"><div>${L('Qualification','qual','text','maxlength=100')}</div><div>${L('Experience (years)','exp','number','min=0 value=0')}</div></div>`;
+ $('#fields').innerHTML=h;$('#sw').innerHTML=reg?'Already registered? <a id="x">Log in</a>':'New here? <a id="x">Create an account</a>';$('#x').onclick=()=>{reg=!reg;draw()}}
+$('#ts').onclick=()=>{role='student';draw()};$('#tf').onclick=()=>{role='faculty';draw()};
+$('#f').onsubmit=async e=>{e.preventDefault();const v=Object.fromEntries(new FormData(e.target));v.exam=$('#exam')?.value;
+ try{reg?await Auth.register(role,v):await Auth.login(role,v.email,v.password);location.href=role+'.html'}catch(x){$('#err').textContent=x.message||x}};
+const s=Auth.user();if(s)location.href=s.role+'.html';draw();
+</script></body></html>
