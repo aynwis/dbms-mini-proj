@@ -1,0 +1,27 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>EduPrep – Admin</title>
+<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@500;600;700;800&display=swap" rel="stylesheet"><link rel="stylesheet" href="style.css"></head><body>
+<div class="app"><nav class="side"><div class="logo">EduPrep Admin</div><a data-v="pending">Pending courses</a><a data-v="instructor">Add instructor</a><a class="out" id="out">Log out</a></nav><main id="m"></main></div><div id="toast"></div>
+<script src="app.js"></script><script>
+let view='pending',tick=0;
+const empty=t=>`<div class="card empty">${t}</div>`;
+const nav=document.querySelectorAll('.side a[data-v]');
+function go(v){view=v;nav.forEach(a=>a.classList.toggle('on',a.dataset.v==v));R()}
+nav.forEach(a=>a.onclick=()=>go(a.dataset.v));$('#out').onclick=()=>Auth.out();
+
+const V={
+ async pending(){const cs=await api('/admin/pending');
+  return `<div class="top"><h2>Pending courses</h2></div><div class="card wrap">${cs.length?`<table><tr><th>Course</th><th>Exam</th><th>Instructor</th><th>Fee</th><th></th></tr>${cs.map(c=>`<tr><td>${esc(c.course_name)}</td><td><span class="tag">${esc(c.category_name)}</span></td><td>${esc(c.instructor_name)}</td><td>₹${c.fee}</td><td><button class="btn s" onclick="approve(${c.course_id})">Approve</button></td></tr>`).join('')}</table>`:'<div class="empty">No courses are waiting for approval.</div>'}</div>`},
+
+ async instructor(){
+  return `<div class="top"><h2>Add instructor</h2></div><form class="card" style="max-width:620px" onsubmit="addInstructor(event)"><div class="f2"><div><label>Full name</label><input name="name" required maxlength=100></div><div><label>Email</label><input name="email" type="email" required maxlength=100></div><div><label>Password</label><input name="password" type="password" required minlength=6></div><div><label>Qualification</label><input name="qual" maxlength=100></div><div><label>Experience (years)</label><input name="exp" type="number" min="0" value="0"></div></div><br><button class="btn">Add instructor</button></form>`}
+};
+
+async function R(){const m=$('#m'),t=++tick;
+ try{const h=await V[view]();if(t===tick)m.innerHTML=h}
+ catch(e){if(t===tick)m.innerHTML=empty(esc(e.message||e))}}
+
+async function approve(id){try{await api('/admin/courses/'+id+'/approve',{method:'POST'});toast('Course approved');R()}catch(x){fail(x)}}
+async function addInstructor(e){const v=fd(e);try{await api('/admin/instructors',{method:'POST',body:v});toast('Instructor added');R()}catch(x){fail(x)}}
+
+Auth.need('admin').then(()=>go('pending'));
+</script></body></html>

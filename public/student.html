@@ -1,0 +1,51 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>EduPrep – Student</title>
+<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@500;600;700;800&display=swap" rel="stylesheet"><link rel="stylesheet" href="style.css"></head><body>
+<div class="app"><nav class="side"><div class="logo">EduPrep</div><a data-v="home">Dashboard</a><a data-v="browse">Browse courses</a><a data-v="learn">My learning</a><a data-v="results">My results</a><a data-v="profile">Profile</a><a class="out" id="out">Log out</a></nav><main id="m"></main></div><div id="toast"></div>
+<script src="app.js"></script><script>
+let view='home',sel=null,pay=null,tick=0;
+const inr=n=>n>0?'₹'+Number(n).toLocaleString('en-IN'):'Free';
+const empty=t=>`<div class="card empty">${t}</div>`;
+const nav=document.querySelectorAll('.side a[data-v]');
+function go(v,s=null){view=v;sel=s;pay=null;nav.forEach(a=>a.classList.toggle('on',a.dataset.v==(v=='course'?'learn':v)));R()}
+nav.forEach(a=>a.onclick=()=>go(a.dataset.v));$('#out').onclick=()=>Auth.out();
+
+const courseCard=c=>`<div class="card"><span class="tag">${esc(c.category_name)}</span><h3 style="margin:0">${esc(c.course_name)}</h3><p class="m">${c.lecture_count} lectures · ${c.test_count} tests</p><button class="btn" onclick="go('course',${c.course_id})">Open course</button></div>`;
+const payForm=c=>`<form class="card" style="max-width:480px" onsubmit="doEnroll(event)"><h3>Enroll in ${esc(c.course_name)}</h3><div class="price">${inr(c.fee)}</div>${c.fee>0?`<label>Payment mode</label><select name="mode"><option>UPI</option><option>Card</option><option>NetBanking</option></select>`:''}<label class="chk"><input type="checkbox" name="simulate_fail"> Simulate payment failure</label><p class="m" style="margin-top:8px">Payment is simulated. Enrollment and payment are saved in one transaction.</p><div class="row" style="margin-top:14px"><button class="btn">${c.fee>0?'Pay & enroll':'Enroll free'}</button><button type="button" class="btn o" onclick="pay=null;R()">Cancel</button></div></form>`;
+
+const V={
+ async home(){const o=await api('/student/overview'),u=o.me;
+  return `<div class="banner"><h2>Hello, ${esc(u.name.split(' ')[0])}</h2><p>${u.exam_name?'Preparing for '+esc(u.exam_name):'Choose your exam in Profile to see courses.'}</p></div>
+  <div class="stats"><div class="card stat"><b>${o.courses.length}</b><span>Courses enrolled</span></div><div class="card stat"><b>${o.attempts}</b><span>Tests attempted</span></div><div class="card stat"><b>${o.best_rank??'–'}</b><span>Best rank</span></div></div>
+  <h3>Continue learning</h3>${o.courses.length?`<div class="grid">${o.courses.map(courseCard).join('')}</div>`:empty('You have not enrolled yet. <br><br><button class="btn" onclick="go(\'browse\')">Browse courses</button>')}`},
+
+ async browse(){const o=await api('/student/courses');if(!o.exam)return empty('Select your exam in Profile first.');
+  const c0=pay&&o.courses.find(c=>c.course_id==pay);
+  return `<div class="top"><h2>${esc(o.exam)} courses</h2></div>${c0?payForm(c0):''}${o.courses.length?`<div class="grid">${o.courses.map(c=>`<div class="card"><span class="tag">${esc(c.category_name)}</span><h3 style="margin:0">${esc(c.course_name)}</h3><p class="m">${esc(c.description||'')}</p><p class="m">By ${esc(c.instructor_name)}</p><div class="price">${inr(c.fee)}</div>${c.enrolled?`<button class="btn o" onclick="go('course',${c.course_id})">Open course</button>`:`<button class="btn" onclick="pay=${c.course_id};R()">Enroll</button>`}</div>`).join('')}</div>`:empty('No approved courses for this exam yet.')}`},
+
+ async learn(){const o=await api('/student/overview');
+  return `<div class="top"><h2>My learning</h2></div>${o.courses.length?`<div class="grid">${o.courses.map(courseCard).join('')}</div>`:empty('No enrollments yet.')}`},
+
+ async course(){const o=await api('/student/courses/'+sel),c=o.course;
+  return `<div class="top"><div><button class="btn o s" onclick="go('learn')">← Back</button><h2 style="margin-top:10px">${esc(c.course_name)}</h2><p class="m">By ${esc(c.instructor_name)}</p></div></div>
+  <div class="card"><h3>Lectures</h3>${o.lectures.length?`<table>${o.lectures.map(l=>`<tr><td>${l.seq_no}</td><td>${esc(l.title)}</td><td>${l.duration_min||'–'} min</td><td><a href="${esc(l.video_link)}" target="_blank" rel="noopener" class="btn s">Watch</a></td></tr>`).join('')}</table>`:'<div class="empty">No lectures yet.</div>'}</div>
+  <div class="card"><h3>Test series &amp; papers</h3>${o.tests.length?`<div class="wrap"><table><tr><th>Title</th><th>Marks</th><th>Time</th><th>Paper</th><th>Your result</th></tr>${o.tests.map(t=>`<tr><td>${esc(t.title)}</td><td>${t.total_marks}</td><td>${t.duration_min||'–'} min</td><td><button class="btn y s" data-link="${esc(t.test_paper_link)}" onclick="download(this.dataset.link)">Open</button></td><td>${t.score!=null?`${t.score}/${t.total_marks} <span class="tag ok">Rank #${t.rank_no}</span>`:`<form class="row" onsubmit="att(event,${t.test_id})"><input name="s" type="number" min="0" required placeholder="Score (out of ${t.total_marks})" style="width:150px"><button class="btn s">Save</button></form>`}</td></tr>`).join('')}</table></div>`:'<div class="empty">No tests yet.</div>'}</div>`},
+
+ async results(){const at=await api('/student/results');
+  return `<div class="top"><h2>My results</h2></div><div class="card wrap">${at.length?`<table><tr><th>Test</th><th>Course</th><th>Date</th><th>Score</th><th>Rank</th></tr>${at.map(a=>`<tr><td>${esc(a.test_title)}</td><td>${esc(a.course_name)}</td><td>${a.attempt_date}</td><td>${a.score}/${a.total_marks}</td><td><span class="tag ok">#${a.rank_no}</span></td></tr>`).join('')}</table>`:'<div class="empty">No attempts yet.</div>'}</div>`},
+
+ async profile(){const [s,cats]=await Promise.all([api('/me'),api('/categories')]),u=s.user;
+  return `<div class="top"><h2>Profile</h2></div><form class="card" style="max-width:620px" onsubmit="saveProfile(event)"><div class="f2"><div><label>Name</label><input name="name" value="${esc(u.name)}" required maxlength=100></div><div><label>Email</label><input value="${esc(u.email)}" disabled></div><div><label>Phone</label><input name="phone" value="${esc(u.phone)}" maxlength=15></div><div><label>City</label><input name="city" value="${esc(u.city)}" maxlength=50></div></div><label>Registered exam</label><select name="registered_exam_id"><option value="">Select exam</option>${cats.map(c=>`<option value="${c.category_id}" ${c.category_id==u.registered_exam_id?'selected':''}>${esc(c.category_name)}</option>`).join('')}</select><p class="m" style="margin-top:10px">Registered on ${u.registration_date}</p><br><button class="btn">Save changes</button></form>`}
+};
+
+async function R(){const m=$('#m'),t=++tick;
+ try{const h=await V[view]();if(t===tick)m.innerHTML=h}
+ catch(e){if(t===tick){m.innerHTML=empty(esc(e.message||e));}}}
+
+async function saveProfile(e){const v=fd(e);try{await api('/student/profile',{method:'PUT',body:v});toast('Profile saved');R()}catch(x){fail(x)}}
+async function doEnroll(e){const v=fd(e),cid=pay;
+ try{await api('/enroll',{method:'POST',body:{course_id:cid,mode:v.mode,simulate_fail:v.simulate_fail==='on'}});toast('Enrolled successfully');go('course',cid)}
+ catch(x){fail(x)}}
+async function att(e,tid){const v=fd(e);try{await api('/attempt',{method:'POST',body:{test_id:tid,score:v.s}});toast('Attempt recorded');R()}catch(x){fail(x)}}
+
+Auth.need('student').then(()=>go('home'));
+</script></body></html>

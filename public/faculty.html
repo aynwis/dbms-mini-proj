@@ -1,0 +1,50 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>EduPrep – Faculty</title>
+<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@500;600;700;800&display=swap" rel="stylesheet"><link rel="stylesheet" href="style.css"></head><body>
+<div class="app"><nav class="side"><div class="logo">EduPrep</div><a data-v="home">Dashboard</a><a data-v="courses">My courses</a><a data-v="lectures">Lectures</a><a data-v="papers">Test papers</a><a data-v="results">Student results</a><a data-v="profile">Profile</a><a class="out" id="out">Log out</a></nav><main id="m"></main></div><div id="toast"></div>
+<script src="app.js"></script><script>
+let view='home',tick=0;
+const empty=t=>`<div class="card empty">${t}</div>`;
+const opts=(a,k,n)=>a.map(x=>`<option value="${x[k]}">${esc(x[n])}</option>`).join('');
+const nav=document.querySelectorAll('.side a[data-v]');
+function go(v){view=v;nav.forEach(a=>a.classList.toggle('on',a.dataset.v==v));R()}
+nav.forEach(a=>a.onclick=()=>go(a.dataset.v));$('#out').onclick=()=>Auth.out();
+const needApproval='Lectures and papers can be added once the admin approves one of your courses.';
+
+const V={
+ async home(){const o=await api('/faculty/overview'),u=o.me,s=o.stats;
+  return `<div class="banner"><h2>Welcome, ${esc(u.name)}</h2><p>${esc(u.qualification||'Faculty')} · ${u.experience_years} yrs experience</p></div><div class="stats"><div class="card stat"><b>${s.courses}</b><span>Your courses</span></div><div class="card stat"><b>${s.pending}</b><span>Pending approval</span></div><div class="card stat"><b>${s.lectures}</b><span>Lectures added</span></div><div class="card stat"><b>${s.papers}</b><span>Papers published</span></div><div class="card stat"><b>${s.enrollments}</b><span>Enrollments</span></div></div>${s.courses?'':empty('Start by creating a course.<br><br><button class="btn" onclick="go(\'courses\')">Create course</button>')}`},
+
+ async courses(){const [cs,cats]=await Promise.all([api('/faculty/courses'),api('/categories')]);
+  return `<div class="top"><h2>My courses</h2></div><form class="card" onsubmit="addCourse(event)"><h3>New course</h3><div class="f2"><div><label>Course name</label><input name="course_name" required maxlength=150></div><div><label>Exam category</label><select name="category_id">${opts(cats,'category_id','category_name')}</select></div><div><label>Fee (₹)</label><input name="fee" type="number" min="0" step="0.01" value="0" required></div><div><label>Description</label><input name="description"></div></div><p class="m" style="margin-top:10px">New courses stay <b>Pending approval</b> until the admin approves them.</p><br><button class="btn">Create course</button></form>
+  <div class="card wrap">${cs.length?`<table><tr><th>Course</th><th>Exam</th><th>Fee</th><th>Status</th><th>Enrolled</th><th></th></tr>${cs.map(c=>`<tr><td>${esc(c.course_name)}</td><td><span class="tag">${esc(c.category_name)}</span></td><td>₹${c.fee}</td><td>${c.status==='Approved'?'<span class="tag ok">Approved</span>':'<span class="tag w">Pending approval</span>'}</td><td>${c.enrolled}</td><td><button class="btn d s" onclick="delCourse(${c.course_id},${c.enrolled})">Delete</button></td></tr>`).join('')}</table>`:'<div class="empty">No courses yet.</div>'}</div>`},
+
+ async lectures(){const o=await api('/faculty/lectures');
+  return `<div class="top"><h2>Lectures</h2></div>${o.courses.length?`<form class="card" onsubmit="addLecture(event)"><h3>Add lecture</h3><div class="f2"><div><label>Course (approved)</label><select name="course_id">${opts(o.courses,'course_id','course_name')}</select></div><div><label>Title</label><input name="title" required maxlength=150></div><div><label>Video link</label><input name="video_link" type="url" required maxlength=255></div><div><label>Duration (min)</label><input name="duration_min" type="number" min="1"></div><div><label>Sequence no.</label><input name="seq_no" type="number" min="1" required></div></div><br><button class="btn">Add lecture</button></form>`:empty(needApproval)}
+  <div class="card wrap">${o.lectures.length?`<table><tr><th>Course</th><th>#</th><th>Title</th><th>Min</th><th></th></tr>${o.lectures.map(l=>`<tr><td>${esc(l.course_name)}</td><td>${l.seq_no}</td><td>${esc(l.title)}</td><td>${l.duration_min||'–'}</td><td><button class="btn d s" onclick="delLecture(${l.lecture_id})">Delete</button></td></tr>`).join('')}</table>`:'<div class="empty">No lectures yet.</div>'}</div>`},
+
+ async papers(){const o=await api('/faculty/papers');
+  return `<div class="top"><h2>Test papers</h2></div>${o.courses.length?`<form class="card" onsubmit="addPaper(event)"><h3>Add test paper (link)</h3><div class="f2"><div><label>Course (approved)</label><select name="course_id">${opts(o.courses,'course_id','course_name')}</select></div><div><label>Title</label><input name="title" required maxlength=150></div><div><label>Total marks</label><input name="total_marks" type="number" min="1" required></div><div><label>Duration (min)</label><input name="duration_min" type="number" min="1"></div><div><label>Paper link</label><input name="link" type="url" required maxlength=255 placeholder="https://..."></div></div><br><button class="btn">Publish</button></form>`:empty(needApproval)}
+  <div class="card wrap">${o.tests.length?`<table><tr><th>Course</th><th>Title</th><th>Marks</th><th></th></tr>${o.tests.map(t=>`<tr><td>${esc(t.course_name)}</td><td>${esc(t.title)}</td><td>${t.total_marks}</td><td class="row"><button class="btn o s" data-link="${esc(t.test_paper_link)}" onclick="download(this.dataset.link)">Open</button><button class="btn d s" onclick="delPaper(${t.test_id})">Delete</button></td></tr>`).join('')}</table>`:'<div class="empty">Nothing published yet.</div>'}</div>`},
+
+ async results(){const ts=await api('/faculty/results');
+  return `<div class="top"><h2>Student results</h2></div>${ts.length?ts.map(t=>`<div class="card wrap"><h3>${esc(t.title)} <span class="m">· ${esc(t.course_name)}</span></h3>${t.attempts.length?`<table><tr><th>Rank</th><th>Student</th><th>Score</th></tr>${t.attempts.map(a=>`<tr><td>#${a.rank_no}</td><td>${esc(a.student_name)}</td><td>${a.score}/${t.total_marks}</td></tr>`).join('')}</table>`:'<div class="empty">No attempts.</div>'}</div>`).join(''):empty('Results appear here once you publish a paper in an approved course.')}`},
+
+ async profile(){const u=(await api('/me')).user;
+  return `<div class="top"><h2>Profile</h2></div><form class="card" style="max-width:620px" onsubmit="saveProfile(event)"><div class="f2"><div><label>Name</label><input name="name" value="${esc(u.name)}" required maxlength=100></div><div><label>Email</label><input value="${esc(u.email)}" disabled></div><div><label>Qualification</label><input name="qualification" value="${esc(u.qualification)}" maxlength=100></div><div><label>Experience (years)</label><input name="experience_years" type="number" min="0" value="${u.experience_years}"></div></div><br><button class="btn">Save changes</button></form>`}
+};
+
+async function R(){const m=$('#m'),t=++tick;
+ try{const h=await V[view]();if(t===tick)m.innerHTML=h}
+ catch(e){if(t===tick)m.innerHTML=empty(esc(e.message||e))}}
+
+async function addCourse(e){const v=fd(e);try{await api('/faculty/courses',{method:'POST',body:v});toast('Course created: pending approval');R()}catch(x){fail(x)}}
+async function delCourse(id,enrolled){if(enrolled>0)return toast('Cannot delete: students are enrolled.',true);if(!confirm('Delete this course with its lectures and tests?'))return;
+ try{await api('/faculty/courses/'+id,{method:'DELETE'});R()}catch(x){fail(x)}}
+async function addLecture(e){const v=fd(e);try{await api('/faculty/lectures',{method:'POST',body:v});toast('Lecture added');R()}catch(x){fail(x)}}
+async function delLecture(id){try{await api('/faculty/lectures/'+id,{method:'DELETE'});R()}catch(x){fail(x)}}
+async function addPaper(e){const v=fd(e);try{await api('/faculty/tests',{method:'POST',body:v});toast('Published');R()}catch(x){fail(x)}}
+async function delPaper(id){if(!confirm('Delete this paper and all attempts on it?'))return;try{await api('/faculty/tests/'+id,{method:'DELETE'});R()}catch(x){fail(x)}}
+async function saveProfile(e){const v=fd(e);try{await api('/faculty/profile',{method:'PUT',body:v});toast('Profile saved');R()}catch(x){fail(x)}}
+
+Auth.need('faculty').then(()=>go('home'));
+</script></body></html>
