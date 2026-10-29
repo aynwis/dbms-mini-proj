@@ -1,0 +1,111 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>EduPrep – Faculty</title>
+<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@500;600;700;800&display=swap" rel="stylesheet"><link rel="stylesheet" href="style.css"></head><body>
+<div class="app"><nav class="side"><div class="logo">EduPrep</div><a data-v="home">Dashboard</a><a data-v="courses">Courses</a><a data-v="lectures">Lectures</a><a data-v="papers">Papers &amp; notes</a><a data-v="results">Student results</a><a data-v="profile">Profile</a><a class="out" id="out">Log out</a></nav>
+<main><div id="flash"></div><div id="m"></div></main></div><div id="toast"></div>
+<script src="app.js"></script><script>
+let view = 'home';
+
+function go(v) {
+  view = v; Panel.freeze = false; flash('');
+  document.querySelectorAll('.side a[data-v]').forEach(a => a.classList.toggle('on', a.dataset.v == v));
+  R();
+}
+document.querySelectorAll('.side a[data-v]').forEach(a => a.onclick = () => go(a.dataset.v));
+$('#out').onclick = () => Auth.logout();
+
+// Run a write, show the database's message (or error), then re-render from the server.
+async function doAction(method, url, body, okText) {
+  try { const r = await act(method, url, body); flash(okText || r.message, false); return true; }
+  catch (e) { flash(e.message, true); return false; }
+}
+const fd = e => { e.preventDefault(); return Object.fromEntries(new FormData(e.target)); };
+const opts = (rows, label) => rows.map(r => `<option value="${r.course_id}">${esc(label(r))}</option>`).join('');
+const courseLabel = c => `${c.course_name} (${c.status})`;
+
+async function R() {
+  try {
+    if (view == 'home') await home();
+    else if (view == 'courses') await courses();
+    else if (view == 'lectures') await lectures();
+    else if (view == 'papers') await papers();
+    else if (view == 'results') await results();
+    else if (view == 'profile') await profile();
+  } catch (e) { flash(e.message, true); }
+}
+
+/* ---- Dashboard: v_instructor_summary ---- */
+async function home() {
+  const { stats: s } = await api('GET', '/api/faculty/overview');
+  $('#m').innerHTML = `<div class="banner"><h2>Welcome, ${esc(s.name)}</h2><p>${esc(s.qualification || 'Faculty')} · ${s.experience_years} yrs experience</p></div>
+  <div class="stats"><div class="card stat"><b>${s.courses}</b><span>Courses</span></div><div class="card stat"><b>${s.approved_courses}</b><span>Approved courses</span></div>
+  <div class="card stat"><b>${s.lectures}</b><span>Lectures added</span></div><div class="card stat"><b>${s.tests}</b><span>Papers published</span></div>
+  <div class="card stat"><b>${s.enrollments}</b><span>Enrollments</span></div></div>
+  ${s.courses ? '' : empty('Start by creating a course.<br><br><button class="btn" onclick="go(\'courses\')">Create course</button>')}`;
+}
+
+/* ---- Courses: v_course_stats ---- */
+async function courses() {
+  const cs = await api('GET', '/api/faculty/courses'), cats = await api('GET', '/api/categories');
+  $('#m').innerHTML = `<div class="top"><h2>Courses</h2></div>
+  <form class="card" id="cf"><h3>New course <span class="m">(created as Pending; the admin approves it)</span></h3><div class="f2">
+  <div><label>Course name</label><input name="course_name" required maxlength=150></div>
+  <div><label>Exam category</label><select name="category_id">${cats.map(c => `<option value="${c.category_id}">${esc(c.category_name)}</option>`).join('')}</select></div>
+  <div><label>Fee (₹)</label><input name="fee" type="number" min="0" step="0.01" value="0" required></div>
+  <div><label>Description</label><input name="description"></div></div><br><button class="btn">Create course</button></form>
+  <div class="card wrap">${cs.length ? `<table><tr><th>Course</th><th>Exam</th><th>Fee</th><th>Status</th><th>Lectures</th><th>Tests</th><th>Enrolled</th><th>Revenue</th><th></th></tr>
+  ${cs.map(c => `<tr><td>${esc(c.course_name)}</td><td><span class="tag">${esc(c.category_name)}</span></td><td>${inr(c.fee)}</td><td>${tag(c.status)}</td><td>${c.lecture_count}</td><td>${c.test_count}</td><td>${c.enrolled_count}</td><td>₹${Number(c.revenue).toLocaleString('en-IN')}</td>
+  <td><button class="btn d s" onclick="delCourse(${c.course_id})">Delete</button></td></tr>`).join('')}</table>` : '<div class="empty">No courses yet.</div>'}</div>`;
+  $('#cf').onsubmit = async e => { if (await doAction('POST', '/api/faculty/courses', fd(e), 'Course created (status Pending).')) R(); else R(); };
+}
+async function delCourse(id) {
+  if (!confirm('Delete this course with its lectures and tests?')) return;
+  await doAction('DELETE', '/api/faculty/courses/' + id); R();
+}
+
+/* ---- Lectures: the dropdown also lists Pending courses so the trigger can be shown ---- */
+async function lectures() {
+  const { courses: cs, lectures: ls } = await api('GET', '/api/faculty/lectures');
+  $('#m').innerHTML = `<div class="top"><h2>Lectures</h2></div>${cs.length ? `<form class="card" id="lf"><h3>Add lecture</h3><div class="f2">
+  <div><label>Course</label><select name="course_id">${opts(cs, courseLabel)}</select></div><div><label>Title</label><input name="title" required maxlength=150></div>
+  <div><label>Video link</label><input name="video_link" type="url" required maxlength=255></div><div><label>Duration (min)</label><input name="duration_min" type="number" min="1"></div>
+  <div><label>Sequence no.</label><input name="seq_no" type="number" min="1" required></div></div><br><button class="btn">Add lecture</button></form>` : empty('Create a course first.')}
+  <div class="card wrap">${ls.length ? `<table><tr><th>Course</th><th>#</th><th>Title</th><th>Min</th><th></th></tr>
+  ${ls.map(l => `<tr><td>${esc(l.course_name)}</td><td>${l.seq_no}</td><td>${esc(l.title)}</td><td>${l.duration_min || '–'}</td><td><button class="btn d s" onclick="delLecture(${l.lecture_id})">Delete</button></td></tr>`).join('')}</table>` : '<div class="empty">You have not added lectures.</div>'}</div>`;
+  if ($('#lf')) $('#lf').onsubmit = async e => { await doAction('POST', '/api/faculty/lectures', fd(e), 'Lecture added.'); R(); };
+}
+async function delLecture(id) { await doAction('DELETE', '/api/faculty/lectures/' + id, undefined, 'Lecture deleted.'); R(); }
+
+/* ---- Papers: links only ---- */
+async function papers() {
+  const { courses: cs, tests: ts } = await api('GET', '/api/faculty/papers');
+  $('#m').innerHTML = `<div class="top"><h2>Papers &amp; notes</h2></div>${cs.length ? `<form class="card" id="tf"><h3>Add paper / notes (link)</h3><div class="f2">
+  <div><label>Course</label><select name="course_id">${opts(cs, courseLabel)}</select></div><div><label>Title</label><input name="title" required maxlength=150></div>
+  <div><label>Total marks</label><input name="total_marks" type="number" min="1" required></div><div><label>Duration (min)</label><input name="duration_min" type="number" min="1"></div>
+  <div><label>Paper link</label><input name="link" type="url" required maxlength=255></div></div><br><button class="btn">Publish</button></form>` : empty('Create a course first.')}
+  <div class="card wrap">${ts.length ? `<table><tr><th>Course</th><th>Title</th><th>Marks</th><th></th></tr>
+  ${ts.map(t => `<tr><td>${esc(t.course_name)}</td><td>${esc(t.title)}</td><td>${t.total_marks}</td><td class="row"><a class="btn o s" href="${esc(t.test_paper_link)}" target="_blank" rel="noopener">Open</a><button class="btn d s" onclick="delTest(${t.test_id})">Delete</button></td></tr>`).join('')}</table>` : '<div class="empty">Nothing published yet.</div>'}</div>`;
+  if ($('#tf')) $('#tf').onsubmit = async e => { await doAction('POST', '/api/faculty/tests', fd(e), 'Paper published.'); R(); };
+}
+async function delTest(id) {
+  if (!confirm('Delete this paper and all attempts on it?')) return;
+  await doAction('DELETE', '/api/faculty/tests/' + id, undefined, 'Paper deleted.'); R();
+}
+
+/* ---- Student results: v_test_leaderboard ---- */
+async function results() {
+  const ts = await api('GET', '/api/faculty/results');
+  $('#m').innerHTML = `<div class="top"><h2>Student results</h2></div>` + (ts.length ? ts.map(t => `<div class="card wrap"><h3>${esc(t.title)} <span class="m">· ${esc(t.course_name)}</span></h3>
+  ${t.attempts.length ? `<table><tr><th>Rank</th><th>Student</th><th>Score</th></tr>${t.attempts.map(a => `<tr><td>#${a.rank_no}</td><td>${esc(a.student_name)}</td><td>${a.score}/${t.total_marks}</td></tr>`).join('')}</table>` : '<div class="empty">No attempts.</div>'}</div>`).join('') : empty('No papers yet.'));
+}
+
+async function profile() {
+  const me = (await api('GET', '/api/me')).user;
+  $('#m').innerHTML = `<div class="top"><h2>Profile</h2></div><form class="card" id="pf" style="max-width:620px"><div class="f2">
+  <div><label>Name</label><input name="name" value="${esc(me.name)}" required maxlength=100></div><div><label>Email</label><input value="${esc(me.email)}" disabled></div>
+  <div><label>Qualification</label><input name="qualification" value="${esc(me.qualification)}" maxlength=100></div>
+  <div><label>Experience (years)</label><input name="experience_years" type="number" min="0" value="${me.experience_years}"></div></div><br><button class="btn">Save changes</button></form>`;
+  $('#pf').onsubmit = async e => { await doAction('PUT', '/api/faculty/profile', fd(e), 'Profile saved.'); R(); };
+}
+
+(async () => { await Auth.need('faculty'); go('home'); })();
+</script></body></html>

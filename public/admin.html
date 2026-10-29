@@ -1,0 +1,92 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>EduPrep – Admin</title>
+<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@500;600;700;800&display=swap" rel="stylesheet"><link rel="stylesheet" href="style.css"></head><body>
+<div class="app"><nav class="side"><div class="logo">EduPrep</div><a data-v="approvals">Approvals</a><a data-v="courses">Courses</a><a data-v="instructors">Instructors</a><a data-v="payments">Payments</a><a data-v="students">Students</a><a data-v="audit">Activity log</a><a data-v="reports">Reports</a><a class="out" id="out">Log out</a></nav>
+<main><div id="flash"></div><div id="m"></div></main></div><div id="toast"></div>
+<script src="app.js"></script><script>
+let view = 'approvals';
+
+function go(v) {
+  view = v; Panel.freeze = false; flash('');
+  document.querySelectorAll('.side a[data-v]').forEach(a => a.classList.toggle('on', a.dataset.v == v));
+  R();
+}
+document.querySelectorAll('.side a[data-v]').forEach(a => a.onclick = () => go(a.dataset.v));
+$('#out').onclick = () => Auth.logout();
+
+async function doAction(method, url, body, okText) {
+  try { const r = await act(method, url, body); flash(okText || r.message, false); return true; }
+  catch (e) { flash(e.message, true); return false; }
+}
+const page = (title, html) => $('#m').innerHTML = `<div class="top"><h2>${title}</h2></div>${html}`;
+
+async function R() {
+  try {
+    if (view == 'approvals') await approvals();
+    else if (view == 'courses') await courses();
+    else if (view == 'instructors') await instructors();
+    else if (view == 'payments') await payments();
+    else if (view == 'students') await students();
+    else if (view == 'audit') await audit();
+    else if (view == 'reports') await reports();
+  } catch (e) { flash(e.message, true); }
+}
+
+/* ---- Approvals: v_pending_courses, Approve = CALL sp_approve_course ---- */
+async function approvals() {
+  const rows = await api('GET', '/api/admin/pending');
+  page('Approvals', `<div class="card">${tbl(rows, 'Action', r => `<button class="btn s" onclick="approve(${r.course_id})">Approve</button>`)}</div>`);
+}
+async function approve(id) { await doAction('POST', `/api/admin/courses/${id}/approve`); R(); }
+
+/* ---- Courses: v_course_stats ---- */
+async function courses() { page('Courses', `<div class="card">${tbl(await api('GET', '/api/admin/courses'))}</div>`); }
+
+/* ---- Instructors: add form + v_instructor_summary ---- */
+async function instructors() {
+  const rows = await api('GET', '/api/admin/instructors');
+  page('Instructors', `<form class="card" id="inf" style="max-width:720px"><h3>Add instructor</h3><div class="f2">
+  <div><label>Name</label><input name="name" required maxlength=100></div><div><label>Email</label><input name="email" type="email" required maxlength=100></div>
+  <div><label>Password</label><input name="password" type="password" required minlength=6></div><div><label>Qualification</label><input name="qual" maxlength=100></div>
+  <div><label>Experience (years)</label><input name="exp" type="number" min="0" value="0"></div></div><br><button class="btn">Add instructor</button></form>
+  <div class="card">${tbl(rows)}</div>`);
+  $('#inf').onsubmit = async e => {
+    e.preventDefault();
+    const f = e.target, ok = await doAction('POST', '/api/admin/instructors', Object.fromEntries(new FormData(f)), 'Instructor added.');
+    R();
+  };
+}
+
+/* ---- Payments: v_payment_report, Mark as paid = UPDATE payment ---- */
+async function payments() {
+  const rows = await api('GET', '/api/admin/payments');
+  page('Payments', `<div class="card">${tbl(rows, 'Action', r => r.status == 'Pending' ? `<button class="btn s y" onclick="paid(${r.payment_id})">Mark as paid</button>` : '')}</div>`);
+}
+async function paid(id) { await doAction('POST', `/api/admin/payments/${id}/paid`, undefined, 'Payment marked as paid.'); R(); }
+
+/* ---- Students: v_student_public (no email, phone or password hash) ---- */
+async function students() { page('Students', `<div class="card">${tbl(await api('GET', '/api/admin/students'))}</div>`); }
+
+/* ---- Activity log: audit_log, filled by triggers only ---- */
+async function audit() {
+  const rows = await api('GET', '/api/admin/audit');
+  page('Activity log <button class="btn o s" id="rf" style="margin-left:12px">Refresh</button>', `<p class="m" style="margin-bottom:12px">Written by database triggers, newest first (last 100).</p><div class="card">${tbl(rows)}</div>`);
+  $('#rf').onclick = () => go('audit');
+}
+
+/* ---- Reports: choose a query Q1..Q13 from the server's whitelist ---- */
+async function reports() {
+  const list = await api('GET', '/api/admin/reports');
+  page('Reports', `<div class="card"><label>Query</label><select id="rp"><option value="">Choose a report…</option>${list.map(r => `<option value="${esc(r.key)}">${esc(r.title)}</option>`).join('')}</select><div id="rout"></div></div>`);
+  $('#rp').onchange = async e => {
+    if (!e.target.value) { $('#rout').innerHTML = ''; return; }
+    Panel.freeze = false;
+    try {
+      const r = await api('GET', '/api/admin/reports/' + e.target.value);
+      $('#rout').innerHTML = `<pre class="sqltext">${esc(r.sql)}</pre>${tbl(r.rows)}`;
+      flash('');
+    } catch (x) { flash(x.message, true); }
+  };
+}
+
+(async () => { await Auth.need('admin'); go('approvals'); })();
+</script></body></html>

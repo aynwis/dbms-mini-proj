@@ -1,0 +1,50 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>EduPrep Online – Sign in</title>
+<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@500;600;700;800&display=swap" rel="stylesheet"><link rel="stylesheet" href="style.css"></head><body>
+<div class="auth"><section class="hero"><div class="logo" style="margin-bottom:40px">Edu<b>Prep</b> Online</div>
+<h1>Crack JEE, NEET &amp; UPSC with <span>one place</span></h1><p>Exam-wise courses, recorded lectures, downloadable notes and test series with automatic ranking.</p>
+<ul><li>Courses organised by exam category</li><li>Download papers and notes anytime</li><li>Track your score and rank on every test</li></ul></section>
+<section class="box"><h2 id="ttl">Welcome back</h2>
+<div class="tabs"><button id="ts" class="on" type="button">Student</button><button id="tf" type="button">Faculty</button><button id="ta" type="button">Admin</button></div>
+<form id="f" autocomplete="on"><div id="fields"></div><div class="err" id="err" role="alert"></div><button class="btn" style="width:100%;margin-top:8px" id="go">Log in</button></form>
+<p class="sw" id="sw"></p>
+<div class="note"><b>Sample logins</b> (password <code>Pass@123</code>)<br>Student: aarav.sharma@example.com, rohan.verma@example.com<br>Faculty: rajesh.kumar@example.com<br>Admin: admin@eduprep.com / Admin@123</div></section></div><div id="toast"></div>
+<script src="app.js"></script><script>
+let role = 'student', reg = false, cats = [];
+const L = (l, n, t = 'text', x = '') => `<label for="${n}">${l}</label><input id="${n}" name="${n}" type="${t}" ${x}>`;
+
+function draw() {
+  const canReg = role === 'student';            // only students can register
+  if (!canReg) reg = false;
+  $('#ttl').textContent = reg ? 'Create your account' : 'Welcome back';
+  $('#go').textContent = reg ? 'Register' : 'Log in';
+  $('#ts').className = role === 'student' ? 'on' : '';
+  $('#tf').className = role === 'faculty' ? 'on' : '';
+  $('#ta').className = role === 'admin' ? 'on' : '';
+  $('#err').textContent = '';
+  let h = '';
+  if (reg) h += L('Full name', 'name', 'text', 'required maxlength=100');
+  h += L('Email', 'email', 'email', 'required maxlength=100') + L('Password', 'password', 'password', 'required minlength=6');
+  if (reg) h += `<div class="f2"><div>${L('Phone', 'phone', 'tel', 'maxlength=15')}</div><div>${L('City', 'city', 'text', 'maxlength=50')}</div></div>
+    <label for="exam">Exam you are preparing for</label><select id="exam" required><option value="">Select exam</option>${cats.map(c => `<option value="${c.category_id}">${esc(c.category_name)}</option>`).join('')}</select>`;
+  $('#fields').innerHTML = h;
+  if (!canReg) $('#sw').textContent = 'Accounts are created by the admin.';
+  else { $('#sw').innerHTML = reg ? 'Already registered? <a id="x">Log in</a>' : 'New here? <a id="x">Create an account</a>'; $('#x').onclick = () => { reg = !reg; draw(); }; }
+}
+for (const [id, r] of [['ts', 'student'], ['tf', 'faculty'], ['ta', 'admin']]) $('#' + id).onclick = () => { role = r; draw(); };
+
+$('#f').onsubmit = async e => {
+  e.preventDefault();
+  const v = Object.fromEntries(new FormData(e.target));
+  try {
+    if (reg) await Auth.register({ name: v.name, email: v.email, password: v.password, phone: v.phone, city: v.city, exam: v.exam });
+    else await Auth.login(role, v.email, v.password);
+    location.href = role + '.html';
+  } catch (x) { $('#err').textContent = x.message; }
+};
+
+(async () => {
+  try { cats = await api('GET', '/api/categories'); } catch { /* server down */ }
+  try { const me = await api('GET', '/api/me'); location.href = me.role + '.html'; return; } catch { /* not logged in */ }
+  draw();
+})();
+</script></body></html>
